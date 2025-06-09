@@ -14,3 +14,12 @@ python distill.py
 
 The example uses a streaming data loader and is meant as a starting point
 for experimenting with Batch Power‑Max and Batch Layer Normalization.
+
+## Requirements
+
+This example requires `transformers>=4.40.0` to load the Qwen3 model.
+If you encounter errors about `ALL_PARALLEL_STYLES`, upgrade transformers:
+
+```bash
+pip install --upgrade transformers
+```

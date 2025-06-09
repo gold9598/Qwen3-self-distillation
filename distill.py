@@ -1,5 +1,14 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+import transformers
+from packaging import version
+
+REQUIRED_TRANSFORMERS = "4.40.0"
+
+if version.parse(transformers.__version__) < version.parse(REQUIRED_TRANSFORMERS):
+    raise RuntimeError(
+        f"transformers>={REQUIRED_TRANSFORMERS} is required, got {transformers.__version__}."
+    )
 from datasets import load_dataset
 
 
