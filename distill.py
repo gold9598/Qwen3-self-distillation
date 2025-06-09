@@ -56,10 +56,16 @@ def extract_denominator(outputs, p: float = 2.0, c: float = 0.0) -> torch.Tensor
 def distill(teacher_name: str, student_name: str, data_loader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    teacher = AutoModelForCausalLM.from_pretrained(teacher_name).to(device)
-    tokenizer = AutoTokenizer.from_pretrained(teacher_name)
+    teacher = AutoModelForCausalLM.from_pretrained(
+        teacher_name, trust_remote_code=True
+    ).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(
+        teacher_name, trust_remote_code=True
+    )
 
-    student = AutoModelForCausalLM.from_pretrained(student_name).to(device)
+    student = AutoModelForCausalLM.from_pretrained(
+        student_name, trust_remote_code=True
+    ).to(device)
 
     optimizer = torch.optim.AdamW(student.parameters(), lr=5e-5)
 
