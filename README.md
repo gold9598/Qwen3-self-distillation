@@ -12,10 +12,5 @@ outputs.
 python distill.py
 ```
 
-The script relies on `trust_remote_code=True` when loading the Qwen3 model
-because the architecture is not yet included in the released version of
-`transformers`. Ensure you have an up-to-date installation of
-`transformers` or install it from source.
-
 The example uses a streaming data loader and is meant as a starting point
 for experimenting with Batch Power‑Max and Batch Layer Normalization.
