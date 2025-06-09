@@ -3,7 +3,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import transformers
 from datasets import load_dataset
 
-
 def load_open_orca(batch_size: int = 1, split: str = "train"):
     """Yield batches of text from the OpenOrca dataset.
 
@@ -58,15 +57,15 @@ def distill(teacher_name: str, student_name: str, data_loader):
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
     teacher = AutoModelForCausalLM.from_pretrained(
-        teacher_name, trust_remote_code=True
-    ).to(device)
+        teacher_name, trust_remote_code=True, device_map = "auto", max_memory={0: "0GB", 1: "0GB", 2: "40GB", 3: "40GB"}, use_cache=False
+    )
     tokenizer = AutoTokenizer.from_pretrained(
         teacher_name, trust_remote_code=True
     )
 
     student = AutoModelForCausalLM.from_pretrained(
-        student_name, trust_remote_code=True
-    ).to(device)
+        student_name, trust_remote_code=True, device_map = "auto", max_memory={0: "0GB", 1: "0GB", 2: "40GB", 3: "40GB"}, use_cache=False
+    )
 
     optimizer = torch.optim.AdamW(student.parameters(), lr=5e-5)
 
@@ -96,4 +95,4 @@ def distill(teacher_name: str, student_name: str, data_loader):
 if __name__ == "__main__":
     # Distil the Qwen3-4B model with itself using the OpenOrca dataset.
     loader = load_open_orca(batch_size=2, split="train")
-    distill("Qwen/Qwen3-4B", "Qwen/Qwen3-4B", loader)
+    distill("Qwen/Qwen3-1.7B", "Qwen/Qwen3-1.7B", loader)
