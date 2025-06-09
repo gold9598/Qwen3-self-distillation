@@ -1,5 +1,33 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from datasets import load_dataset
+
+
+def load_open_orca(batch_size: int = 1, split: str = "train"):
+    """Yield batches of text from the OpenOrca dataset.
+
+    Parameters
+    ----------
+    batch_size: int, optional
+        Number of samples to return per iteration.
+    split: str, optional
+        Dataset split to stream from.
+    """
+    dataset = load_dataset("Open-Orca/OpenOrca", split=split, streaming=True)
+
+    batch = []
+    for sample in dataset:
+        prompt = " ".join(
+            str(sample.get(key, ""))
+            for key in ["system_prompt", "question"]
+            if sample.get(key)
+        ).strip()
+        batch.append(prompt)
+        if len(batch) == batch_size:
+            yield list(batch)
+            batch.clear()
+    if batch:
+        yield list(batch)
 
 
 def extract_denominator(outputs, p: float = 2.0, c: float = 0.0) -> torch.Tensor:
@@ -59,6 +87,6 @@ def distill(teacher_name: str, student_name: str, data_loader):
 
 
 if __name__ == "__main__":
-    # Example usage with dummy data
-    dummy_data = ["Hello world"]
-    distill("Qwen/Qwen3-4B", "Qwen/Qwen3-4B", dummy_data)
+    # Distil the Qwen3-4B model with itself using the OpenOrca dataset.
+    loader = load_open_orca(batch_size=2, split="train")
+    distill("Qwen/Qwen3-4B", "Qwen/Qwen3-4B", loader)
