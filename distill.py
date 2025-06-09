@@ -1,14 +1,6 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import transformers
-from packaging import version
-
-REQUIRED_TRANSFORMERS = "4.40.0"
-
-if version.parse(transformers.__version__) < version.parse(REQUIRED_TRANSFORMERS):
-    raise RuntimeError(
-        f"transformers>={REQUIRED_TRANSFORMERS} is required, got {transformers.__version__}."
-    )
 from datasets import load_dataset
 
 
@@ -63,7 +55,7 @@ def extract_denominator(outputs, p: float = 2.0, c: float = 0.0) -> torch.Tensor
 
 
 def distill(teacher_name: str, student_name: str, data_loader):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
     teacher = AutoModelForCausalLM.from_pretrained(
         teacher_name, trust_remote_code=True
