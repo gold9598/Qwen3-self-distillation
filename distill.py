@@ -2,6 +2,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import transformers
 from datasets import load_dataset
+from tqdm.auto import tqdm
 
 def load_open_orca(batch_size: int = 1, split: str = "train"):
     """Yield batches of text from the OpenOrca dataset.
@@ -72,7 +73,7 @@ def distill(teacher_name: str, student_name: str, data_loader):
     teacher.eval()
     student.train()
 
-    for batch in data_loader:
+    for batch in tqdm(data_loader, desc="Distilling"):
         inputs = tokenizer(batch, return_tensors="pt", padding=True).to(device)
         with torch.no_grad():
             teacher_outputs = teacher(**inputs)
