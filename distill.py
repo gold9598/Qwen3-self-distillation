@@ -1,6 +1,5 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-import transformers
 from datasets import load_dataset
 
 def load_open_orca(batch_size: int = 1, split: str = "train"):
@@ -53,6 +52,11 @@ def extract_denominator(outputs, p: float = 2.0, c: float = 0.0) -> torch.Tensor
     return denominator.detach()
 
 
+def bpmax(logits: torch.Tensor, rd: torch.Tensor, p: float = 2.0, c: float = 0.0) -> torch.Tensor:
+    """Apply the Batch Power-Max transformation."""
+    return ((logits + c) ** p) / rd
+
+
 def distill(teacher_name: str, student_name: str, data_loader):
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
@@ -67,27 +71,41 @@ def distill(teacher_name: str, student_name: str, data_loader):
         student_name, trust_remote_code=True, device_map = "auto", max_memory={0: "0GB", 1: "0GB", 2: "40GB", 3: "40GB"}, use_cache=False
     )
 
-    optimizer = torch.optim.AdamW(student.parameters(), lr=5e-5)
+    for name, param in student.named_parameters():
+        if "lm_head" not in name:
+            param.requires_grad = False
+
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, student.parameters()), lr=5e-5)
 
     teacher.eval()
     student.train()
+
+    rd_values = []
 
     for batch in data_loader:
         inputs = tokenizer(batch, return_tensors="pt", padding=True).to(device)
         with torch.no_grad():
             teacher_outputs = teacher(**inputs)
-        student_outputs = student(**inputs)
 
         denominator = extract_denominator(teacher_outputs)
+        rd_values.append(denominator.cpu())
+
+        student_outputs = student(**inputs)
+
+        teacher_probs = bpmax(teacher_outputs.logits, denominator)
+        student_probs = bpmax(student_outputs.logits, denominator)
 
         loss = torch.nn.functional.kl_div(
-            torch.log_softmax(student_outputs.logits / denominator, dim=-1),
-            torch.softmax(teacher_outputs.logits / denominator, dim=-1),
+            torch.log(student_probs + 1e-12),
+            teacher_probs,
             reduction="batchmean",
         )
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
+
+    rd_mean = torch.stack(rd_values).mean()
+    torch.save(rd_mean, "rd_value.pt")
 
     return student
 
