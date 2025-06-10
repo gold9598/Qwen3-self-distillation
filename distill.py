@@ -2,6 +2,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
 
+
 def load_open_orca(batch_size: int = 1, split: str = "train"):
     """Yield batches of text from the OpenOrca dataset.
 
@@ -52,7 +53,9 @@ def extract_denominator(outputs, p: float = 2.0, c: float = 0.0) -> torch.Tensor
     return denominator.detach()
 
 
-def bpmax(logits: torch.Tensor, rd: torch.Tensor, p: float = 2.0, c: float = 0.0) -> torch.Tensor:
+def bpmax(
+    logits: torch.Tensor, rd: torch.Tensor, p: float = 2.0, c: float = 0.0
+) -> torch.Tensor:
     """Apply the Batch Power-Max transformation."""
     return ((logits + c) ** p) / rd
 
@@ -61,21 +64,40 @@ def distill(teacher_name: str, student_name: str, data_loader):
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
     teacher = AutoModelForCausalLM.from_pretrained(
-        teacher_name, trust_remote_code=True, device_map = "auto", max_memory={0: "0GB", 1: "0GB", 2: "40GB", 3: "40GB"}, use_cache=False
+        teacher_name,
+        trust_remote_code=True,
+        device_map="auto",
+        max_memory={0: "0GB", 1: "0GB", 2: "40GB", 3: "40GB"},
+        use_cache=False,
     )
-    tokenizer = AutoTokenizer.from_pretrained(
-        teacher_name, trust_remote_code=True
-    )
+    tokenizer = AutoTokenizer.from_pretrained(teacher_name, trust_remote_code=True)
 
     student = AutoModelForCausalLM.from_pretrained(
-        student_name, trust_remote_code=True, device_map = "auto", max_memory={0: "0GB", 1: "0GB", 2: "40GB", 3: "40GB"}, use_cache=False
+        student_name,
+        trust_remote_code=True,
+        device_map="auto",
+        max_memory={0: "0GB", 1: "0GB", 2: "40GB", 3: "40GB"},
+        use_cache=False,
     )
 
     for name, param in student.named_parameters():
         if "lm_head" not in name:
             param.requires_grad = False
 
-    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, student.parameters()), lr=5e-5)
+    trainable_params = [p for p in student.parameters() if p.requires_grad]
+
+    if not trainable_params:
+        if hasattr(student, "lm_head"):
+            for p in student.lm_head.parameters():
+                p.requires_grad = True
+            trainable_params = list(student.lm_head.parameters())
+        else:
+            raise ValueError(
+                "optimizer got an empty parameter list because no parameters were "
+                "marked as requiring gradients"
+            )
+
+    optimizer = torch.optim.AdamW(trainable_params, lr=5e-5)
 
     teacher.eval()
     student.train()
