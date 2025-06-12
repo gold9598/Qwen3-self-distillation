@@ -1,5 +1,8 @@
 import math
 from typing import Optional, Tuple
+from transformers.models.qwen3.modeling_qwen3 import repeat_kv, Qwen3Model, Qwen3Attention
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
 
 try:
     import torch
@@ -31,11 +34,45 @@ def bpmax(x: torch.Tensor, p: float = 5.0, c: float = 5.0, rd: Optional[torch.Te
         denom = rd
     return powered / denom, denom
 
+def eager_attention_forward(
+    module: nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    scaling: float,
+    dropout: float = 0.0,
+    p: float = 5.0,
+    c: float = 5.0,
+    rd: Optional[torch.Tensor] = None,
+    **kwargs,
+):
+    key_states = repeat_kv(key, module.num_key_value_groups)
+    value_states = repeat_kv(value, module.num_key_value_groups)
 
-def eager_attention_forward(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, p: float = 5.0, c: float = 5.0, rd: Optional[torch.Tensor] = None, training: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Simplified eager attention using BPMax instead of softmax."""
-    head_dim = query.size(-1)
-    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(head_dim)
-    attn_probs, rd_value = bpmax(scores, p=p, c=c, rd=rd, training=training)
-    context = torch.matmul(attn_probs, value)
-    return context, attn_probs, rd_value
+    attn_weights = torch.matmul(query, key_states.transpose(2, 3)) * scaling
+    if attention_mask is not None:
+        causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+        attn_weights = attn_weights + causal_mask
+
+    # attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query.dtype)
+    # attn_weights = nn.functional.dropout(attn_weights, p=dropout, training=module.training)
+    attn_weights, module.rd = bpmax(attn_weights, p=p, c=c, rd=module.rd, training=True)
+    
+    attn_output = torch.matmul(attn_weights, value_states)
+    attn_output = attn_output.transpose(1, 2).contiguous()
+
+    return attn_output, attn_weights
+
+class Qwen3Modified():
+    def __init__(self, name = "Qwen/Qwen3-1.7B", device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")):
+        self.model = AutoModelForCausalLM.from_pretrained(
+            name,
+            trust_remote_code=True,
+            device_map="auto",
+            max_memory={0: "0GB", 1: "80GB", 2: "80GB"},
+            use_cache=False
+        )
+
+        self.model.model.layers[-1].self_attn.attention_interface = eager_attention_forward
+        self.rd = [0.0 for _ in range(len(self.model.model.layers))]
